@@ -1862,6 +1862,19 @@ def _convert_one_hot(pfor_input):
       array_ops.one_hot(indices, depth, on_value, off_value, axis), True)
 
 
+@RegisterPFor("OneHotReduceSum")
+def _convert_one_hot(pfor_input):
+  indices = pfor_input.stacked_input(0)
+  depth = pfor_input.unstacked_input(1)
+  on_value = pfor_input.unstacked_input(2)
+  off_value = pfor_input.unstacked_input(3)
+  axis_onehot = pfor_input.get_attr("axis_onehot")
+  if axis_onehot >= 0:
+    axis_onehot += 1
+  return wrap(
+      array_ops.one_hot_reduce_sum(indices, depth, on_value, off_value, axis_onehot), True)
+
+
 @RegisterPFor("Slice")
 def _convert_slice(pfor_input):
   t = pfor_input.stacked_input(0)

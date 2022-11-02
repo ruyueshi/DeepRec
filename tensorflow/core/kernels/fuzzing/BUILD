@@ -69,6 +69,8 @@ tf_ops_fuzz_target_lib("check_numerics")
 
 tf_ops_fuzz_target_lib("one_hot")
 
+tf_ops_fuzz_target_lib("one_hot_reduce_sum")
+
 tf_ops_fuzz_target_lib("scatter_nd")
 
 tf_oss_fuzz_corpus("scatter_nd")

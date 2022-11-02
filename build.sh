@@ -1,0 +1,2 @@
+#bazel build  -c opt --copt=-O3  --config=opt  --copt=-msse4.2  --config=mkl_threadpool --copt="-DEIGEN_USE_MKL_ALL" --define build_with_mkl_dnn_v1_only=true //tensorflow/tools/pip_package:build_pip_package
+bazel build  -c opt --copt=-O3  --config=opt  --copt=-msse4.2  --config=mkl_threadpool --copt="-DEIGEN_USE_MKL_VML" --define build_with_mkl_dnn_v1_only=true //tensorflow/tools/pip_package:build_pip_package

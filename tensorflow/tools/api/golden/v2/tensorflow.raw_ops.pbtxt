@@ -2705,6 +2705,10 @@ tf_module {
     argspec: "args=[\'indices\', \'depth\', \'on_value\', \'off_value\', \'axis\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'None\'], "
   }
   member_method {
+    name: "OneHotReduceSum"
+    argspec: "args=[\'indices\', \'depth\', \'on_value\', \'off_value\', \'axis_onehot\', \'axis_reducesum\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'None\'], "
+  }
+  member_method {
     name: "OneShotIterator"
     argspec: "args=[\'dataset_factory\', \'output_types\', \'output_shapes\', \'container\', \'shared_name\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'\', \'None\'], "
   }

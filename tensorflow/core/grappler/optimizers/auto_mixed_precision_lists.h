@@ -294,6 +294,7 @@ class AutoMixedPrecisionListsCuda : public AutoMixedPrecisionLists {
         "NextIteration",
         "NotEqual",
         "OneHot",
+        "OneHotReduceSum",
         "OnesLike",
         "Pack",
         "Pad",

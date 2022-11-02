@@ -860,6 +860,7 @@ def _DepthToSpaceGrad(op, grad):
 
 
 ops.NotDifferentiable("OneHot")
+ops.NotDifferentiable("OneHotReduceSum")
 
 
 @ops.RegisterGradient("MirrorPad")

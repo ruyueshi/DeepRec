@@ -944,6 +944,7 @@ bool NeverForwardsInputs(const NodeDef& node) {
                                 "MatrixDiagPart",
                                 "Mfcc",
                                 "OneHot",
+                                "OneHotReduceSum",
                                 "Pack",
                                 "PopulationCount",
                                 "Range",

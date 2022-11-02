@@ -1043,6 +1043,7 @@ cc_library(
         ":matrix_set_diag_op",
         ":mirror_pad_op",
         ":one_hot_op",
+        ":one_hot_reduce_sum_op",
         ":pack_op",
         ":pad_op",
         ":quantize_and_dequantize_op",
@@ -1203,6 +1204,12 @@ tf_kernel_library(
 tf_kernel_library(
     name = "one_hot_op",
     prefix = "one_hot_op",
+    deps = ARRAY_DEPS + ["//tensorflow/core:overflow"],
+)
+
+tf_kernel_library(
+    name = "one_hot_reduce_sum_op",
+    prefix = "one_hot_reduce_sum_op",
     deps = ARRAY_DEPS + ["//tensorflow/core:overflow"],
 )
 
@@ -6720,6 +6727,8 @@ filegroup(
         "non_max_suppression_op.h",
         "one_hot_op.cc",
         "one_hot_op.h",
+        "one_hot_reduce_sum_op.cc",
+        "one_hot_reduce_sum_op.h",
         "ops_util.h",
         "pack_op.cc",
         "pooling_ops_common.h",
