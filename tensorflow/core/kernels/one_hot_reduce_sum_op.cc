@@ -64,7 +64,7 @@ class OneHotReduceSumOp : public OpKernel {
     const int indices_dims = indices_shape.dims();
     const int one_hot_dims = indices_dims + 1;
     const int output_dims = indices_dims;
-    const int indices_num = indices_shape.num_elements();
+    const int indices_num = indices.NumElements();
 
     // Preliminary validation of sizes.
     OP_REQUIRES(
@@ -105,8 +105,10 @@ class OneHotReduceSumOp : public OpKernel {
     Tensor* output;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, output_shape, &output));
 
-    VLOG(1) << "intput shape: " << indices.shape().DebugString();
-    VLOG(1) << "output shape: " << output->shape().DebugString();
+    const int output_num = output->NumElements();
+
+    VLOG(1) << "intput shape: " << indices.shape().DebugString() << "output shape: " << output->shape().DebugString();
+    VLOG(1) << "depth: " << depth_v << ", input num: " << indices_num << ", output num: " << output_num;
 
     TI* indices_ptr = static_cast<TI*>(indices.data());
     T* output_ptr = static_cast<T*>(output->data());
@@ -123,23 +125,21 @@ class OneHotReduceSumOp : public OpKernel {
       }
       int64 suffix_dim_size = indices_num / prefix_dim_size;
 
-      VLOG(1) << "prefix_dim_size = " << prefix_dim_size << ", suffix_dim_size = " << suffix_dim_size << ", depth_v = " << depth_v
-              << ", on = " << *on_value_ptr << ", off = " << *off_value_ptr;
-      
-      double t0, t1, t2, t3;
+      double t0, t1, t2;
       t0 = get_millisecond();
-      std::memset(output_ptr, static_cast<int>(*off_value_ptr), output_shape.num_elements() * sizeof(T));
+      std::memset(output_ptr, static_cast<int>(*off_value_ptr), output->NumElements() * sizeof(T));
       t1 = get_millisecond();
-      auto work = [this, &indices_ptr, &output_ptr, &on_value_ptr, &off_value_ptr, &depth_v, &suffix_dim_size](int64 start, int64 end) {
+
+      auto work = [this, &indices_ptr, &output_ptr, &on_value_ptr, &off_value_ptr, &depth_v, &suffix_dim_size, &output_num](int64 start, int64 end) {
         for (int64 i = start; i < end; i++) {
           auto val = indices_ptr[i];
+          if (val < 0 || val >= depth_v) {
+            continue;
+          }
           int64 row = i / suffix_dim_size;
           output_ptr[row * depth_v + val] += (*on_value_ptr);
         }
       };
-
-      VLOG(1) << "total num = " << indices_num;
-      t2 = get_millisecond();
 
       // V3: parallel mode with tensorflow::Shard
       if (ctx) {
@@ -152,8 +152,8 @@ class OneHotReduceSumOp : public OpKernel {
       }
 
       // // V2: parallel mode with std::thread
-      // int thread_num = 8;  // std::ceil(indices_num / cost_per_thread);
-      // int cost_per_thread = std::ceil(indices_num / thread_num); // 400000;
+      // int thread_num = 8;
+      // int cost_per_thread = std::ceil(indices_num / thread_num);
       // std::vector<std::shared_ptr<std::thread>> ths;
       // VLOG(1) << "std::thread, num_threads = " << thread_num;
       // for (int i = 0; i < thread_num; i++) {
@@ -164,11 +164,10 @@ class OneHotReduceSumOp : public OpKernel {
       //   ths[i]->join();
       // }
 
-      t3 = get_millisecond();
 
       // // V1: serial mode
-      // TODO: Because output type is float, it may error when off_value_val is not equal to 0.0
-      // std::memset(output_ptr, static_cast<int>(*off_value_ptr), prefix_dim_size * depth_v * sizeof(T));
+      // // TODO: Because output type is float, it may error when off_value_val is not equal to 0.0
+      // std::memset(output_ptr, static_cast<int>(*off_value_ptr), output->NumElements() * sizeof(T));
       // for (int i = 0; i < prefix_dim_size; i++) {
       //   for (int j = 0; j < suffix_dim_size; j++) {
       //     auto val = indices_ptr[i * suffix_dim_size + j];
@@ -176,12 +175,14 @@ class OneHotReduceSumOp : public OpKernel {
       //   }
       // }
 
-      VLOG(1) << "*** memset cost " << (t1 - t0) << " ms.";
-      VLOG(1) << "*** assign cost " << (t3 - t2) << " ms.";
+      t2 = get_millisecond();
+
+      VLOG(2) << "memset cost " << (t1 - t0) << " ms.";
+      VLOG(2) << "assign cost " << (t2 - t1) << " ms.";
     }
 
     double end = get_millisecond();
-    VLOG(1) << "*** op runtime cost " << (end - start) << " ms.";
+    VLOG(2) << "*** op totally cost " << (end - start) << " ms.";
   }
 
  private:

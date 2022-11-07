@@ -7286,16 +7286,19 @@ class IndicatorColumn(
     dense_id_tensor = sparse_ops.sparse_tensor_to_dense(
         id_tensor, default_value=-1)
 
-    # One hot must be float for tf.concat reasons since all other inputs to
-    # input_layer are float32.
-    one_hot_id_tensor = array_ops.one_hot(
-        dense_id_tensor,
-        depth=self._variable_shape[-1],
-        on_value=1.0,
-        off_value=0.0)
+    print("*** one_hot and reduce_sum")
+    return array_ops.one_hot_reduce_sum(dense_id_tensor, depth=self._variable_shape[-1], on_value=1.0, off_value=0.0, axis_reducesum=-2)
 
-    # Reduce to get a multi-hot per example.
-    return math_ops.reduce_sum(one_hot_id_tensor, axis=[-2])
+    # # One hot must be float for tf.concat reasons since all other inputs to
+    # # input_layer are float32.
+    # one_hot_id_tensor = array_ops.one_hot(
+    #     dense_id_tensor,
+    #     depth=self._variable_shape[-1],
+    #     on_value=1.0,
+    #     off_value=0.0)
+
+    # # Reduce to get a multi-hot per example.
+    # return math_ops.reduce_sum(one_hot_id_tensor, axis=[-2])
 
   def transform_feature(self, transformation_cache, state_manager):
     """Returns dense `Tensor` representing feature.

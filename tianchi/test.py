@@ -1,4 +1,5 @@
 
+import os
 import time
 
 import numpy as np
@@ -23,7 +24,8 @@ class OneHotReduceSumOpsTest(test.TestCase):
         super().__init__(methodName=method_name)
     
     def test_one_hot_reduce_sum_debug(self):
-        a = tf.constant([[0,1,1],[2,3,3]])
+        input("pid: " + str(os.getpid()) +", press enter to continue")
+        a = tf.constant([[-1,0,1],[2,3,4]])
         b = tf.one_hot(a, depth=5, axis=-1)
         c = tf.reduce_sum(b, axis=[-2])
         d = tf.one_hot_reduce_sum(a, depth=5, axis_reducesum=-2)
@@ -40,11 +42,11 @@ class OneHotReduceSumOpsTest(test.TestCase):
         要想测试 origin op 和 fused op 的真实速度，可以运行 test_one_hot_reduce_sum_perf_gt 和 
         test_one_hot_reduce_sum_perf_fused 这两个单测。
         """
-        depth = 100
-        a = tf.constant(np.random.randint(0, depth, [200, 300, 400]))
+        depth = 10000
+        a = tf.constant(np.random.randint(0, depth, [512, 50]))
         fused = tf.one_hot_reduce_sum(a, depth=depth, axis_onehot=-1, axis_reducesum=-2)  # axis_onehot default is -1 and axis_reducesum default is -2
         gt = tf.reduce_sum(tf.one_hot(a, depth=depth), axis=-2)
-        count = 10
+        count = 5
         with self.session() as sess:
             t0 = time.time()
             res_fused = sess.run(fused)
@@ -58,9 +60,11 @@ class OneHotReduceSumOpsTest(test.TestCase):
             timeit("\torigin op:", lambda: sess.run(gt), count)
     
     def test_one_hot_reduce_sum_perf_fused(self):
-        depth = 200
-        a = tf.constant(np.random.randint(0, depth, [100, 100, 4000]))
-        fused = tf.one_hot_reduce_sum(a, depth=depth, axis_onehot=-1, axis_reducesum=5000)  # axis_onehot default is -1 and axis_reducesum default is -2
+        # depth = 200
+        # a = tf.constant(np.random.randint(0, depth, [100, 100, 4000]))
+        depth = 10000
+        a = tf.constant(np.random.randint(0, depth, [512, 50]))
+        fused = tf.one_hot_reduce_sum(a, depth=depth, on_value=1.0, off_value=0.0, axis_onehot=-1, axis_reducesum=-2)  # axis_onehot default is -1 and axis_reducesum default is -2
         count = 5
         with self.session() as sess:
             t0 = time.time()
