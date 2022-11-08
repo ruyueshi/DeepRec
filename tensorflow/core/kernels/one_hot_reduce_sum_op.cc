@@ -53,8 +53,6 @@ class OneHotReduceSumOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* ctx) override {
-    double start = get_millisecond();
-    VLOG(1) << "****** one hot reduce sum ******";
     const Tensor& indices = ctx->input(0);
     const Tensor& depth = ctx->input(1);
     const Tensor& on_value = ctx->input(2);
@@ -107,9 +105,6 @@ class OneHotReduceSumOp : public OpKernel {
 
     const int output_num = output->NumElements();
 
-    VLOG(1) << "intput shape: " << indices.shape().DebugString() << "output shape: " << output->shape().DebugString();
-    VLOG(1) << "depth: " << depth_v << ", input num: " << indices_num << ", output num: " << output_num;
-
     TI* indices_ptr = static_cast<TI*>(indices.data());
     T* output_ptr = static_cast<T*>(output->data());
     T* on_value_ptr = static_cast<T*>(on_value.data());
@@ -125,11 +120,6 @@ class OneHotReduceSumOp : public OpKernel {
       }
       int64 suffix_dim_size = indices_num / prefix_dim_size;
 
-      double t0, t1, t2;
-      t0 = get_millisecond();
-      std::memset(output_ptr, static_cast<int>(*off_value_ptr), output->NumElements() * sizeof(T));
-      t1 = get_millisecond();
-
       auto work = [this, &indices_ptr, &output_ptr, &on_value_ptr, &off_value_ptr, &depth_v, &suffix_dim_size, &output_num](int64 start, int64 end) {
         for (int64 i = start; i < end; i++) {
           auto val = indices_ptr[i];
@@ -141,7 +131,7 @@ class OneHotReduceSumOp : public OpKernel {
         }
       };
 
-      // V3: parallel mode with tensorflow::Shard
+      std::memset(output_ptr, static_cast<int>(*off_value_ptr), output->NumElements() * sizeof(T));
       if (ctx) {
         auto worker_threads = *(ctx->device()->tensorflow_cpu_worker_threads());
         VLOG(1) << "tf shard, num_threads = " << worker_threads.num_threads;
@@ -150,39 +140,7 @@ class OneHotReduceSumOp : public OpKernel {
         VLOG(1) << "serial";
         work(0, indices_num);
       }
-
-      // // V2: parallel mode with std::thread
-      // int thread_num = 8;
-      // int cost_per_thread = std::ceil(indices_num / thread_num);
-      // std::vector<std::shared_ptr<std::thread>> ths;
-      // VLOG(1) << "std::thread, num_threads = " << thread_num;
-      // for (int i = 0; i < thread_num; i++) {
-      //   int64 start = i * cost_per_thread, end = std::min(i * cost_per_thread + cost_per_thread, indices_num);
-      //   ths.emplace_back(std::make_shared<std::thread>(work, start, end));
-      // }
-      // for (int i = 0; i < thread_num; i++) {
-      //   ths[i]->join();
-      // }
-
-
-      // // V1: serial mode
-      // // TODO: Because output type is float, it may error when off_value_val is not equal to 0.0
-      // std::memset(output_ptr, static_cast<int>(*off_value_ptr), output->NumElements() * sizeof(T));
-      // for (int i = 0; i < prefix_dim_size; i++) {
-      //   for (int j = 0; j < suffix_dim_size; j++) {
-      //     auto val = indices_ptr[i * suffix_dim_size + j];
-      //     output_ptr[i * depth_v + val] += (*on_value_ptr);
-      //   }
-      // }
-
-      t2 = get_millisecond();
-
-      VLOG(2) << "memset cost " << (t1 - t0) << " ms.";
-      VLOG(2) << "assign cost " << (t2 - t1) << " ms.";
     }
-
-    double end = get_millisecond();
-    VLOG(2) << "*** op totally cost " << (end - start) << " ms.";
   }
 
  private:
@@ -190,12 +148,6 @@ class OneHotReduceSumOp : public OpKernel {
   int32 axis_reducesum_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(OneHotReduceSumOp);
-
-  double get_millisecond() {
-    struct timespec ts;
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-    return (ts.tv_sec * 1000000.0 + ts.tv_nsec / 1000.0) / 1000.0;
-  }
 };
 
 #define REGISTER_ONE_HOT_INDEX(type, index_type)                \

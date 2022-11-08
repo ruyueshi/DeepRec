@@ -7286,7 +7286,6 @@ class IndicatorColumn(
     dense_id_tensor = sparse_ops.sparse_tensor_to_dense(
         id_tensor, default_value=-1)
 
-    print("*** one_hot and reduce_sum")
     return array_ops.one_hot_reduce_sum(dense_id_tensor, depth=self._variable_shape[-1], on_value=1.0, off_value=0.0, axis_reducesum=-2)
 
     # # One hot must be float for tf.concat reasons since all other inputs to

@@ -46,7 +46,7 @@ class OneHotReduceSumOpsTest(test.TestCase):
         a = tf.constant(np.random.randint(0, depth, [512, 50]))
         fused = tf.one_hot_reduce_sum(a, depth=depth, axis_onehot=-1, axis_reducesum=-2)  # axis_onehot default is -1 and axis_reducesum default is -2
         gt = tf.reduce_sum(tf.one_hot(a, depth=depth), axis=-2)
-        count = 5
+        count = 10
         with self.session() as sess:
             t0 = time.time()
             res_fused = sess.run(fused)
