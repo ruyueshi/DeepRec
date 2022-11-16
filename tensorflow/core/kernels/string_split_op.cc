@@ -15,6 +15,8 @@ limitations under the License.
 
 // See docs in ../ops/string_ops.cc.
 #include <algorithm>
+#include <ctime>
+#include <fstream>
 #include <numeric>
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -125,6 +127,12 @@ std::vector<StringPiece> Split(const string& str, const string& delimiter,
   return SplitOnCharSet(str, delimiter, predicate);
 }
 
+double get_millisecond() {
+  struct timespec ts;
+  clock_gettime(CLOCK_MONOTONIC, &ts);
+  return (ts.tv_sec * 1000000.0 + ts.tv_nsec / 1000.0) / 1000.0;
+}
+
 std::vector<StringPiece> SplitV2(const string& str, StringPiece sep,
                                  int maxsplit) {
   // This SplitV2 method matches the behavior of python's str.split:
@@ -139,7 +147,12 @@ std::vector<StringPiece> SplitV2(const string& str, StringPiece sep,
   //   separator, and the result will contain no empty strings at the start or
   //   end if the string has leading or trailing whitespace. Consequently,
   //   splitting an empty string or a string consisting of just whitespace
+
   //   with a None separator returns [].
+
+  // VLOG(2) << "*** SplitV2: str=\"" << str << "\", sep=\"" << sep << "\", maxsplit=" << maxsplit;
+  double t0, t1;
+  t0 = get_millisecond();
 
   std::vector<StringPiece> result;
 
@@ -180,6 +193,105 @@ std::vector<StringPiece> SplitV2(const string& str, StringPiece sep,
     p = std::search(text.begin(), text.end(), sep.begin(), sep.end());
   }
   result.push_back(text);
+  t1 = get_millisecond();
+  VLOG(1) << "*** SplitV2 cost " << (t1 - t0) << " ms";
+  return result;
+}
+
+std::vector<StringPiece> SplitV3(const string& str, StringPiece sep,
+                                 int maxsplit) {
+  // This SplitV3 method matches the behavior of python's str.split:
+  //   If sep is given, consecutive delimiters are not grouped together
+  //   and are deemed to delimit empty strings (for example, '1,,2'.split(',')
+  //   returns ['1', '', '2']). The sep argument may consist of multiple
+  //   characters (for example, '1<>2<>3'.split('<>') returns ['1', '2', '3']).
+  //   Splitting an empty string with a specified separator returns [''].
+  //
+  //   If sep is not specified or is None, a different splitting algorithm is
+  //   applied: runs of consecutive whitespace are regarded as a single
+  //   separator, and the result will contain no empty strings at the start or
+  //   end if the string has leading or trailing whitespace. Consequently,
+  //   splitting an empty string or a string consisting of just whitespace
+  //   with a None separator returns [].
+
+  // VLOG(2) << "*** SplitV3: str=\"" << str << "\", sep=\"" << sep << "\", maxsplit=" << maxsplit;
+  double t0, t1;
+  t0 = get_millisecond();
+
+  std::vector<StringPiece> result;
+
+  StringPiece text(str);
+  if (maxsplit == 0) {
+    result.emplace_back(text);
+    return result;
+  }
+
+  if (sep.empty()) {
+    StringPiece token;
+    // Remove leading whitespaces.
+    str_util::RemoveLeadingWhitespace(&text);
+    int split = 0;
+    while (str_util::ConsumeNonWhitespace(&text, &token)) {
+      result.push_back(token);
+      str_util::RemoveLeadingWhitespace(&text);
+      ++split;
+      if (maxsplit > 0 && split == maxsplit) {
+        result.push_back(text);
+        return result;
+      }
+    }
+    return result;
+  }
+
+  uint32_t delim_len = sep.size(), str_len = text.size();
+  char* pre = const_cast<char*>(text.data());
+  char *cur = pre, *p_end = pre + text.size();
+  int split = 0;
+  // VLOG(1) << "*** before msse: p_end-cur=" << (p_end - cur);
+#if ((defined __x86_64__) && (defined __linux__))
+  // VLOG(2) << "  use msse!!!";
+  if (delim_len <= 16 && str_len >= 16 && delim_len > 0) {
+    // VLOG(2) << "  msse opt is used!!!";
+    __m128i set16 = _mm_loadu_si128((const __m128i*)sep.data());
+    do {
+      __m128i b16 = _mm_loadu_si128((const __m128i*)cur);
+      uint32_t r =
+          _mm_cmpestri(set16, delim_len, b16, 16, _SIDD_CMP_EQUAL_ORDERED);
+      if (r != 16 && r + delim_len <= 16) {
+        cur += r;
+        result.emplace_back(pre, cur - pre);
+        cur = cur + delim_len;
+        pre = cur;
+        ++split;
+        if (maxsplit > 0 && split == maxsplit) {
+          result.emplace_back(cur, p_end - cur);
+          return result;
+        }
+      } else {
+        cur = cur + (16 - delim_len + 1);
+      }
+    } while (cur + 16 <= p_end);
+  }
+#endif
+  // VLOG(1) << "    after msse: p_end-cur=" << (p_end - cur);
+  for (; cur + delim_len <= p_end; ++cur) {
+    if (*cur == sep.data()[0] && memcmp(cur, sep.data(), delim_len) == 0) {
+      result.emplace_back(pre, cur - pre);
+      cur = cur + delim_len - 1;
+      pre = cur + 1;
+      ++split;
+      if (maxsplit > 0 && split == maxsplit) {
+        result.emplace_back(cur, p_end - cur);
+        return result;
+      }
+    }
+  }
+  // VLOG(1) << "    last: p_end-cur=" << (p_end - cur);
+  if (pre != p_end) {
+    result.emplace_back(pre, p_end - pre);
+  }
+  t1 = get_millisecond();
+  VLOG(1) << "*** SplitV3 cost " << (t1 - t0) << " ms";
   return result;
 }
 
@@ -431,6 +543,7 @@ class StringSplitV2Op : public OpKernel {
   explicit StringSplitV2Op(OpKernelConstruction* context)
       : OpKernel(context), maxsplit_(-1), element_cost_(0), result_cost_(0) {
     OP_REQUIRES_OK(context, context->GetAttr("maxsplit", &maxsplit_));
+    split_func_ = SplitV2;  // maxsplit_ == -2 ? SplitV2 : SplitV3;
   }
 
   void ParallelSplitV2(OpKernelContext* ctx,
@@ -461,7 +574,7 @@ class StringSplitV2Op : public OpKernel {
         int64 position_in_worker = 0;
         for (int64 i = start; i < end; ++i) {
           std::vector<StringPiece> parts =
-              SplitV2(input_vec(i), sep, maxsplit_);
+              split_func_(input_vec(i), sep, maxsplit_);
           int64 n_entries = parts.size();
           id_to_worker[i].emplace_back(worker_id);
           id_to_worker[i].emplace_back(w_array[worker_id].counter_for_thread);
@@ -570,7 +683,7 @@ class StringSplitV2Op : public OpKernel {
 
     std::vector<int64> num_indices(batch_size);
     for (int64 i = 0; i < batch_size; ++i) {
-      std::vector<StringPiece> parts = SplitV2(input_vec(i), sep, maxsplit_);
+      std::vector<StringPiece> parts = split_func_(input_vec(i), sep, maxsplit_);
       int64 n_entries = parts.size();
       num_indices[i] = n_entries;
       output_size += n_entries;
@@ -620,6 +733,19 @@ class StringSplitV2Op : public OpKernel {
                                         sep_tensor->shape().DebugString()));
     const auto sep_vec = sep_tensor->flat<string>();
     StringPiece sep(sep_vec(0));
+    
+    VLOG(1) << sep << " " << maxsplit_ << " " << batch_size;
+// #define DEBUG
+#ifdef DEBUG
+    mtx_.lock();
+    std::ofstream ofs("./split_input.txt", std::ios::app);
+    ofs << sep << std::endl << maxsplit_ << std::endl << batch_size << std::endl;
+    for (int i = 0; i < batch_size; i++) {
+      ofs << input_vec(i) << std::endl;
+    }
+    ofs.close();
+    mtx_.unlock();
+#endif // DEBUG
 
     uint64 start = 0;
     uint64 end = 0;
@@ -627,16 +753,18 @@ class StringSplitV2Op : public OpKernel {
     if (element_cost_ == 0 && batch_size) {
       size_t sample_id = rand() % batch_size;
       std::vector<StringPiece> temp_for_warm_up =
-          SplitV2(input_vec(sample_id), sep, maxsplit_);
+          split_func_(input_vec(sample_id), sep, maxsplit_);
       start = Env::Default()->NowNanos();
-      temp_for_warm_up = SplitV2(input_vec(sample_id), sep, maxsplit_);
+      temp_for_warm_up = split_func_(input_vec(sample_id), sep, maxsplit_);
       end = Env::Default()->NowNanos();
       element_cost_ = end -start;
     }
     uint64 element_cost = element_cost_;
     if (element_cost * batch_size >= parallel_limit_) {
+      VLOG(1) << "=== parallel";
       ParallelSplitV2(ctx, input_vec, batch_size, sep);
     } else {
+      VLOG(1) << "=== sequential";
       SequentialSplitV2(ctx, input_vec, batch_size, sep);
     }
   }
@@ -646,6 +774,9 @@ class StringSplitV2Op : public OpKernel {
   uint64 element_cost_;
   uint64 result_cost_;
   const int64 parallel_limit_ = 240000;
+  std::mutex mtx_;
+
+  std::function<std::vector<StringPiece>(const string&, StringPiece, int)> split_func_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("StringSplit").Device(DEVICE_CPU), StringSplitOp);

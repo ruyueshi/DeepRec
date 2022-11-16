@@ -120,7 +120,11 @@ class OneHotReduceSumOp : public OpKernel {
       }
       int64 suffix_dim_size = indices_num / prefix_dim_size;
 
-      auto work = [this, &indices_ptr, &output_ptr, &on_value_ptr, &off_value_ptr, &depth_v, &suffix_dim_size, &output_num](int64 start, int64 end) {
+      auto init = [&output_ptr, &off_value_ptr](int64 start, int64 end) {
+        std::memset(output_ptr + start, static_cast<int>(*off_value_ptr), (end - start) * sizeof(T));
+      };
+
+      auto work = [&indices_ptr, &output_ptr, &on_value_ptr, &depth_v, &suffix_dim_size](int64 start, int64 end) {
         for (int64 i = start; i < end; i++) {
           auto val = indices_ptr[i];
           if (val < 0 || val >= depth_v) {
@@ -131,13 +135,15 @@ class OneHotReduceSumOp : public OpKernel {
         }
       };
 
-      std::memset(output_ptr, static_cast<int>(*off_value_ptr), output->NumElements() * sizeof(T));
+      std::memset(output_ptr, static_cast<int>(*off_value_ptr), output_num * sizeof(T));
       if (ctx) {
         auto worker_threads = *(ctx->device()->tensorflow_cpu_worker_threads());
         VLOG(1) << "tf shard, num_threads = " << worker_threads.num_threads;
+        // Shard(worker_threads.num_threads, worker_threads.workers, output_num, 5000, init);
         Shard(worker_threads.num_threads, worker_threads.workers, indices_num, 5000, work);
       } else {
         VLOG(1) << "serial";
+        // init(0, output_num);
         work(0, indices_num);
       }
     }
